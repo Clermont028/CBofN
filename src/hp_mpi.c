@@ -49,12 +49,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "misc.h"
-#include <omp.h>
+#include <omp.h>  //For the timing function
 
-#define floor(x) ((int)(x))
+#define floor(i) ((int)(i))
 
 int width = 50, height = 50, states = 100, wrap = 1, mag = 1;
 int seed = 0, invert = 0, steps =  1000, freq = 1, diag = 1;
+int numThreads = 1;
 double k1 = 2, k2 = 3, g = 34;
 char *term = NULL;
 
@@ -72,6 +73,7 @@ or the source code for an explanation of how the cells change over time.\
 OPTION options[] = {
   { "-width",  OPT_INT,     &width,  "Width of the plot in pixels." },
   { "-height", OPT_INT,     &height, "Height of the plot in pixels." },
+  { "-threads",OPT_INT,     &numThreads, "Number of threads to use"},
   { "-states", OPT_INT,     &states, "Number of cell states." },
   { "-steps",  OPT_INT,     &steps,  "Number of simulated steps." },
   { "-seed",   OPT_INT,     &seed,   "Random seed for initial state." },
@@ -86,19 +88,17 @@ OPTION options[] = {
   { "-term",   OPT_STRING,  &term,   "How to plot points." },
   { NULL,      OPT_NULL,    NULL,    NULL }
 };
-
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 void update_cell(int **oldstate, int **newstate, int x, int y)
-
 {
   int nx, ny, i, j, numinf, numill, sum;
 
   numinf = numill = sum = 0;
-  sum = oldstate[x][y]; //whats in the current cell we're looking at
+  sum = oldstate[x][y];
 
   /* For every cell in the 3x3 neighborhood. */
-  for(i = -1; i <= 1; i++){ 
+  for(i = -1; i <= 1; i++){
     for(j = -1; j <= 1; j++) {
 
       /* Skip the current cell. */
@@ -126,7 +126,7 @@ void update_cell(int **oldstate, int **newstate, int x, int y)
       else if(oldstate[nx][ny] > 0)
         numinf++;
     }
-  }
+}
   /* Healthy cell: */
   if(oldstate[x][y] == 0)
     newstate[x][y] = floor(numinf / k1) + floor(numill / k2);
@@ -141,6 +141,8 @@ void update_cell(int **oldstate, int **newstate, int x, int y)
   if(newstate[x][y] > states - 1)
     newstate[x][y] = states - 1;
 }
+
+/////////////////////////////////HELPER FUNCTION///////////////////////////////////////
 
 int out_of_bounds(int pos, int i, int j, int height, int width){
   //Switch cases for knowing if something is out of bounds or not
@@ -164,10 +166,14 @@ int out_of_bounds(int pos, int i, int j, int height, int width){
   }
   return 0;
 }
+
 void step(int height, int width, int** oldstate, int** newstate, int t, int freq){
-   int i, j;
+    int i, j;
     int state_neighbors, numinf, numill; 
-  for(j = 0; j < height; j++){
+
+   /* For every cell ... */
+   #pragma omp parallel for private(i, j, state_neighbors, numinf, numill) shared(height, width, oldstate, newstate)
+    for(j = 0; j < height; j++){
       for(i = 0; i < width; i++) {
         numinf = numill = state_neighbors = 0;
         state_neighbors = oldstate[i][j];
@@ -315,6 +321,7 @@ void step(int height, int width, int** oldstate, int** newstate, int t, int freq
       }
     }
 }
+
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 int main(int argc, char **argv)
@@ -326,6 +333,9 @@ int main(int argc, char **argv)
 
   get_options(argc, argv, options, help_string);
 
+  omp_set_num_threads(numThreads);
+  printf("Number of threads: %d \n", numThreads);
+
   plot_mag = mag;
   plot_inverse = invert;
   plot_init(width, height, states, term);
@@ -335,33 +345,25 @@ int main(int argc, char **argv)
   /* Allocate and initial memory for cell states. */
   oldstate = xmalloc(sizeof(int *) * width);
   newstate = xmalloc(sizeof(int *) * width);
+  //Creating the state grid on initializition 
   for(i = 0; i < width; i++) {
     oldstate[i] = xmalloc(sizeof(int) * height);
     newstate[i] = xmalloc(sizeof(int) * height);
     for(j = 0; j < height; j++)
       oldstate[i][j] = (int) random_range(0, states - 1);
   }
-  
+
   double start_time = omp_get_wtime();
   /* For each time step... */
   for(t = 0; t < steps; t++) {
     step(height, width, oldstate, newstate, t, freq);
-    // /* For every cell ... */
-    // for(j = 0; j < height; j++)
-    //   for(i = 0; i < width; i++) {
-    //     /* Update the cell state. */
-    //     update_cell(oldstate, newstate, i, j);
-    //     /* Update display, if appropriate. */
-    //     if(t % freq == 0)
-    //       plot_point(i, j, oldstate[i][j]);
-    //   }
+
     /* Make the next state equal to the new state. */
     swap = oldstate; oldstate = newstate; newstate = swap;
   }
-  
   double runtime = omp_get_wtime() - start_time;
   printf("total runTime: %f s\n", runtime);
-
+  
   plot_finish();
   free(oldstate);
   free(newstate);

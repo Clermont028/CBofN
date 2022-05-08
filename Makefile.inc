@@ -6,5 +6,5 @@ COMPSYS = ca life hp boids termites vants sipd eipd \
           assoc hopfield
 ADAPT   = gastring gabump gatask gasurf gaipd zcs zcscup mlp
 
-DEMOS   = $(COMP) $(FRACT) $(CHAOS) $(COMPSYS) $(ADAPT)
+DEMOS   = hp hp_mpi
 

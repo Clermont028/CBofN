@@ -15,8 +15,11 @@ X11      = 1
 XINCLUDE = /usr/X11/include
 XLIBS    = /usr/X11/lib
 
-COPTS    = -O3  -Wall  -D__dest_os=unix
+COPTS    = -O3  -Wall  -D__dest_os=unix -fopenmp
 CC       = gcc
+
+MPICC = mpicc
+OMP = -fopenmp
 
 #######################################################################
 
@@ -62,7 +65,7 @@ PROGS    = $(DEMOS)
 default: $(PROGS)
 
 $(PROGS): % : %.o libmisc.a
-	$(CC) -o $@ $< $(LDFLAGS) $(LIBS)
+	$(CC) -o $@ $< $(LDFLAGS) $(LIBS) $(OMP)
 
 libmisc.a: misc.o plot.o $(PLOTOBJS)
 	ar cr $@ $^
@@ -72,5 +75,6 @@ bifur1d.o phase1d.o: maps1d.c
 
 clean:
 	rm -f $(PROGS) *.a *.o
+
 
 #######################################################################
